@@ -1,0 +1,347 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QUOTA | Casino Survival</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;overflow:hidden;background:#080611;color:#fff;font-family:Arial,sans-serif}
+canvas{display:block}
+#hud{position:fixed;top:15px;left:15px;z-index:2;width:220px;padding:16px;background:#100d20e8;border:1px solid #9864ff;border-radius:12px;pointer-events:none}
+#hud h2{margin:0 0 14px;letter-spacing:5px;color:#e4b6ff}
+.stat{display:flex;justify-content:space-between;margin:10px 0;font-size:13px;color:#c9bedb}
+.stat b{color:white}
+#crosshair{position:fixed;left:50%;top:50%;width:8px;height:8px;border:1px solid white;border-radius:50%;transform:translate(-50%,-50%);pointer-events:none}
+#hint{position:fixed;bottom:25px;left:50%;transform:translateX(-50%);z-index:3;background:#100d20ed;border:1px solid #9564ff;padding:13px 18px;border-radius:9px;font-size:12px;white-space:nowrap}
+#overlay{position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;text-align:center;background:radial-gradient(ellipse at center,#27123c,#080611 75%)}
+#intro{max-width:620px;padding:25px}
+#intro h1{font-size:clamp(60px,12vw,100px);letter-spacing:12px;color:#e0aaff;margin:0;text-shadow:0 0 40px #b34aff66}
+#intro h2{letter-spacing:5px}
+p{line-height:1.7;color:#c6bdd6}
+button{background:linear-gradient(120deg,#ac4fff,#7131c7);color:white;border:0;padding:13px 20px;border-radius:8px;font-weight:bold;cursor:pointer;margin:4px}
+button:hover{filter:brightness(1.2)}
+#panel{display:none;position:fixed;z-index:6;left:50%;top:50%;transform:translate(-50%,-50%);width:min(420px,92vw);padding:25px;background:#171027f5;border:1px solid #b36dff;border-radius:15px;text-align:center;box-shadow:0 0 60px #852bff44}
+#panel h2{letter-spacing:3px}
+#bet{width:90%;accent-color:#b96bff;margin:20px}
+#result{color:#ffd77a;min-height:40px;font-size:14px}
+.secondary{background:#302542}
+.small{font-size:11px;color:#9b8bac}
+@media(max-width:500px){#hud{width:180px;padding:12px}.stat{font-size:11px}#hint{font-size:10px;bottom:12px}}
+</style>
+</head>
+<body>
+<div id="hud">
+<h2>QUOTA</h2>
+<div class="stat"><span>💰 Chips</span><b id="chips">100</b></div>
+<div class="stat"><span>🎯 Quota</span><b id="quota">150</b></div>
+<div class="stat"><span>🏆 Round</span><b id="round">1</b></div>
+<div class="stat"><span>⏱ Time</span><b id="time">90s</b></div>
+<div class="stat"><span>↗ Needed</span><b id="needed">50</b></div>
+</div>
+<div id="crosshair"></div>
+<div id="hint">Click ENTER CASINO to begin</div>
+
+<div id="panel">
+<h2 id="gameTitle">CASINO</h2>
+<p id="description">Place your bet.</p>
+<div>Bet amount: <b id="betDisplay">10</b> chips</div>
+<input id="bet" type="range" min="10" max="100" step="10" value="10">
+<div>
+<button id="play">PLACE BET</button>
+<button class="secondary" id="close">LEAVE TABLE</button>
+</div>
+<div id="result">Good luck.</div>
+<p class="small">Luck is not a strategy. But it might be all you have.</p>
+</div>
+
+<div id="overlay">
+<div id="intro">
+<div class="small">FIRST-PERSON 3D SURVIVAL</div>
+<h1>QUOTA</h1>
+<h2>CASINO SURVIVAL</h2>
+<p>You're in debt. Every round, the casino demands more.<br>
+Win enough chips before time runs out.</p>
+<p><b>WASD</b> Move · <b>Mouse</b> Look · <b>Shift</b> Sprint<br>
+<b>E</b> Play nearby table · <b>Esc</b> Release mouse</p>
+<button id="start" style="padding:16px 30px;font-size:17px">ENTER CASINO</button>
+</div>
+</div>
+
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x100b20);
+scene.fog=new THREE.Fog(0x100b20,18,48);
+
+const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,100);
+camera.rotation.order='YXZ';
+camera.position.set(0,1.7,10);
+
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.25;
+document.body.prepend(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xc3b5ff,0x30202b,2));
+const mainLight=new THREE.PointLight(0xffc777,100,40);
+mainLight.position.set(0,7,0);
+scene.add(mainLight);
+
+function mat(color,roughness=.6,metalness=0,emissive=0){
+ return new THREE.MeshStandardMaterial({color,roughness,metalness,emissive,emissiveIntensity:.8});
+}
+const floor=mat(0x292337,.25,.35);
+const wall=mat(0x191426);
+const gold=mat(0xd8a94c,.25,.65,0x54320a);
+const black=mat(0x11101b,.3,.2);
+const green=mat(0x087a54,.3,.2,0x00331a);
+const purple=mat(0x852bca,.3,.2,0x4d087a);
+
+function block(x,y,z,sx,sy,sz,m){
+ const o=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz),m);
+ o.position.set(x,y,z);o.castShadow=true;o.receiveShadow=true;scene.add(o);return o;
+}
+function glow(x,y,z,color,power=15,range=9){
+ const l=new THREE.PointLight(color,power,range);l.position.set(x,y,z);scene.add(l);return l;
+}
+function cylinder(x,y,z,r,h,m){
+ const o=new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,32),m);
+ o.position.set(x,y,z);o.castShadow=true;scene.add(o);return o;
+}
+function makeLabel(text,color){
+ const c=document.createElement('canvas');c.width=512;c.height=128;
+ const ctx=c.getContext('2d');
+ ctx.font='bold 48px Arial';ctx.textAlign='center';ctx.textBaseline='middle';
+ ctx.shadowColor=color;ctx.shadowBlur=20;ctx.fillStyle=color;ctx.fillText(text,256,64);
+ const tex=new THREE.CanvasTexture(c);
+ const s=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true}));
+ s.scale.set(4,1,1);return s;
+}
+
+// Casino architecture
+block(0,-.3,0,28,.6,36,floor);
+block(0,4,-18,28,8,.5,wall);
+block(0,4,18,28,8,.5,wall);
+block(-14,4,0,.5,8,36,wall);
+block(14,4,0,.5,8,36,wall);
+block(0,8,0,28,.3,36,black);
+
+for(let x=-12;x<=12;x+=3){
+ for(let z=-15;z<=15;z+=3){
+  block(x,.015,z,2.85,.025,2.85,mat((Math.abs(x+z)%2)?0x30243d:0x211b30,.25,.3));
+ }
+}
+for(let x of [-9,-3,3,9]){
+ for(let z of [-12,-4,4,12]){
+  block(x,7.8,z,2,.12,2,mat(0x4c2867,.3,.1,0x963cff));
+  glow(x,7,z,0xb04aff,12,8);
+ }
+}
+for(let z=-12;z<=12;z+=6){
+ for(let x of [-12,12]){
+  block(x,2.3,z,.5,4,.5,purple);
+  block(x,4.4,z,.8,.15,.8,gold);
+  glow(x,3.2,z,0xa653ff,12,8);
+ }
+}
+const sign=makeLabel('THE LAST CHANCE CASINO','#ffce6b');
+sign.position.set(0,5.6,-17.6);sign.scale.set(9,2,1);scene.add(sign);
+
+const stations=[
+ {name:'NEON SLOTS',type:'slots',x:-8,z:-5,color:0xc54bff},
+ {name:'ROULETTE',type:'roulette',x:0,z:-7,color:0x40e6a2},
+ {name:'BLACKJACK',type:'blackjack',x:8,z:-5,color:0xffba52},
+ {name:'HIGH ROLLER',type:'roulette',x:0,z:4,color:0xff567f}
+];
+const tableLights=[];
+for(const s of stations){
+ const top=mat(s.color,.3,.25,s.color);
+ block(s.x,.85,s.z,3.5,.35,2.1,top);
+ block(s.x,.4,s.z,1.1,.8,1.1,black);
+ block(s.x,.65,s.z,1.7,.1,1.5,gold);
+ const label=makeLabel(s.name,'#'+new THREE.Color(s.color).getHexString());
+ label.position.set(s.x,2.5,s.z);scene.add(label);
+ tableLights.push(glow(s.x,2,s.z,s.color,18,9));
+ if(s.type==='slots'){
+  for(let j=-1;j<=1;j++){
+   block(s.x+j*.85,1.65,s.z-.4,.7,1.25,.6,purple);
+   block(s.x+j*.85,1.7,s.z-.72,.55,.4,.08,gold);
+  }
+ }else if(s.type==='roulette'){
+  cylinder(s.x,1.08,s.z,.8,.15,green);
+  cylinder(s.x,1.18,s.z,.2,.17,gold);
+  for(let j=0;j<12;j++){
+   const a=j*Math.PI/6;
+   const chip=cylinder(s.x+Math.cos(a)*.6,1.17,s.z+Math.sin(a)*.6,.055,.025,j%2?mat(0xb62b4b):gold);
+  }
+ }else{
+  for(let j=-1;j<=1;j++){
+   block(s.x+j*.75,1.08,s.z-.3,.6,.08,.6,j===0?mat(0xa92b49):black);
+  }
+ }
+}
+
+// Game state
+let chips=100,round=1,quota=150,time=90;
+let active=null,ended=false,started=false,locked=false;
+let yaw=0,pitch=0,elapsed=0,last=performance.now();
+const keys={};
+const blockers=stations.map(s=>({x:s.x,z:s.z,r:2.1}));
+
+const $=id=>document.getElementById(id);
+function hud(){
+ $('chips').textContent=chips;
+ $('quota').textContent=quota;
+ $('round').textContent=round;
+ $('time').textContent=Math.max(0,Math.ceil(time))+'s';
+ $('needed').textContent=Math.max(0,quota-chips);
+}
+function say(t){$('result').textContent=t;}
+function nearby(){
+ let result=null,dist=3.3;
+ for(const s of stations){
+  const d=Math.hypot(camera.position.x-s.x,camera.position.z-s.z);
+  if(d<dist){dist=d;result=s;}
+ }
+ return result;
+}
+function openTable(s){
+ if(active||ended)return;
+ active=s;
+ $('panel').style.display='block';
+ $('gameTitle').textContent=s.name;
+ $('description').textContent=s.type==='slots'?'Match symbols. Two matches pay 2×; three matching symbols pay 8×.':
+ s.type==='roulette'?'Choose red or black. A winning bet pays 2×.':
+ 'Draw a hand against the dealer. Beat the dealer without exceeding 21.';
+ $('bet').max=Math.max(10,Math.min(chips,200));
+ $('bet').value=Math.min(10,Math.max(10,chips));
+ $('betDisplay').textContent=$('bet').value;
+ document.exitPointerLock?.();
+ say('Place your bet.');
+}
+$('bet').oninput=()=>{$('betDisplay').textContent=$('bet').value;};
+$('close').onclick=()=>{
+ $('panel').style.display='none';active=null;
+ if(started&&!ended)renderer.domElement.requestPointerLock?.();
+};
+$('play').onclick=()=>{
+ if(!active||ended)return;
+ const wager=Number($('bet').value);
+ if(wager<10||wager>chips){say('You need at least 10 chips.');return;}
+ chips-=wager;
+ let payout=0,won=false,result='';
+ if(active.type==='slots'){
+  const a=Math.floor(Math.random()*5),b=Math.floor(Math.random()*5),c=Math.floor(Math.random()*5);
+  const symbols=['◆','7','★','●','♛'];
+  if(a===b&&b===c){payout=wager*8;won=true;result=`JACKPOT! ${symbols[a]} ${symbols[b]} ${symbols[c]}`;}
+  else if(a===b||b===c||a===c){payout=wager*2;won=true;result=`MATCH! ${symbols[a]} ${symbols[b]} ${symbols[c]}`;}
+  else result=`${symbols[a]} ${symbols[b]} ${symbols[c]} — no match.`;
+ }else if(active.type==='roulette'){
+  won=Math.random()<.475;payout=won?wager*2:0;
+  result=won?'The wheel favors you!':'Wrong color. The house wins.';
+ }else{
+  const draw=()=>2+Math.floor(Math.random()*10);
+  const player=draw()+draw(),dealer=draw()+draw();
+  won=player<=21&&(dealer>21||player>dealer);
+  const push=player===dealer&&player<=21;
+  payout=won?Math.floor(wager*2.5):push?wager:0;
+  result=`You: ${player} · Dealer: ${dealer}. `+(won?'You win!':push?'Push — bet returned.':'Dealer wins.');
+ }
+ chips+=payout;
+ say(result+(payout?' Payout: '+payout+' chips.':''));
+ hud();
+ if(chips>=quota)say('QUOTA REACHED! Survive until the timer ends.');
+};
+function finish(win){
+ if(ended)return;
+ ended=true;active=null;$('panel').style.display='none';
+ document.exitPointerLock?.();
+ $('overlay').style.display='flex';
+ $('intro').innerHTML=win?
+ `<div style="color:#dca8ff;letter-spacing:5px">ROUND CLEARED</div><h1>QUOTA PAID</h1><h2>ROUND ${round} SURVIVED</h2><p>You finished with ${chips} chips.</p><button id="next">NEXT ROUND →</button>`:
+ `<h1 style="color:#ff5876">GAME OVER</h1><h2>THE HOUSE ALWAYS WINS</h2><p>Round ${round} · Chips ${chips} · Quota ${quota}</p><button id="restart">TRY AGAIN ↻</button>`;
+ $('next')?.addEventListener('click',()=>{
+  round++;quota=Math.ceil(quota*1.55/10)*10;
+  time=Math.max(35,90-(round-1)*7);
+  elapsed=0;ended=false;$('overlay').style.display='none';hud();
+  renderer.domElement.requestPointerLock?.();
+ });
+ $('restart')?.addEventListener('click',()=>{
+  chips=100;round=1;quota=150;time=90;elapsed=0;
+  ended=false;active=null;yaw=0;pitch=0;
+  camera.position.set(0,1.7,10);camera.rotation.set(0,0,0);
+  $('overlay').style.display='none';hud();
+  renderer.domElement.requestPointerLock?.();
+ });
+}
+$('start').onclick=()=>{
+ started=true;$('overlay').style.display='none';
+ renderer.domElement.requestPointerLock?.();
+};
+document.addEventListener('pointerlockchange',()=>{
+ locked=document.pointerLockElement===renderer.domElement;
+});
+document.addEventListener('mousemove',e=>{
+ if(!locked||active)return;
+ yaw-=e.movementX*.002;
+ pitch=THREE.MathUtils.clamp(pitch-e.movementY*.002,-1.45,1.45);
+ camera.rotation.set(pitch,yaw,0,'YXZ');
+});
+document.addEventListener('keydown',e=>{
+ keys[e.code]=true;
+ if(e.code==='KeyE'&&!active&&!ended&&started){
+  const s=nearby();if(s)openTable(s);
+ }
+ if(e.code==='Escape'&&active){
+  $('panel').style.display='none';active=null;
+ }
+});
+document.addEventListener('keyup',e=>keys[e.code]=false);
+window.addEventListener('blur',()=>{for(const k in keys)keys[k]=false;});
+
+function animate(now){
+ requestAnimationFrame(animate);
+ const dt=Math.min((now-last)/1000,.05);last=now;
+ if(started&&!ended&&!active&&$('overlay').style.display==='none'){
+  elapsed+=dt;
+  if(elapsed>=1){
+   const seconds=Math.floor(elapsed);elapsed-=seconds;time-=seconds;hud();
+   if(time<=0){time=0;hud();finish(chips>=quota);}
+  }
+  const forward=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
+  const right=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));
+  const move=new THREE.Vector3();
+  if(keys.KeyW||keys.ArrowUp)move.add(forward);
+  if(keys.KeyS||keys.ArrowDown)move.sub(forward);
+  if(keys.KeyD||keys.ArrowRight)move.add(right);
+  if(keys.KeyA||keys.ArrowLeft)move.sub(right);
+  if(move.lengthSq()){
+   move.normalize().multiplyScalar((keys.ShiftLeft||keys.ShiftRight?7.3:4.2)*dt);
+   const nx=THREE.MathUtils.clamp(camera.position.x+move.x,-12.5,12.5);
+   const nz=THREE.MathUtils.clamp(camera.position.z+move.z,-16.3,16.3);
+   if(!blockers.some(b=>Math.hypot(nx-b.x,nz-b.z)<b.r)){
+    camera.position.x=nx;camera.position.z=nz;
+   }
+  }
+  const s=nearby();
+  $('hint').textContent=s?'Press E to play '+s.name:'WASD Move · Mouse Look · Shift Sprint · E Play';
+ }
+ for(let i=0;i<tableLights.length;i++)tableLights[i].intensity=16+Math.sin(now*.002+i*2)*5;
+ renderer.render(scene,camera);
+}
+window.addEventListener('resize',()=>{
+ camera.aspect=innerWidth/innerHeight;
+ camera.updateProjectionMatrix();
+ renderer.setSize(innerWidth,innerHeight);
+});
+hud();requestAnimationFrame(animate);
+</script>
+</body>
+</html>
